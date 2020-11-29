@@ -3,6 +3,7 @@ package org.springframework.core.io;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.ResourceUtils;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -87,10 +88,16 @@ public abstract class AbstractResource implements Resource{
      * @return
      * @throws IOException
      */
+//    TODO:这里使用到的ResourceUtils及NestedIOException未实现，先去实现ResourceUtils
     @Override
     public URI getURI() throws IOException {
         URL url = getURL();
-        return null;
+        try {
+            return ResourceUtils.toURI(url);
+        } catch (Exception e) {
+            throw new NestedIOException("Invalid URI [" + url + "]", ex);
+        }
+
     }
 
     @Override
