@@ -20,6 +20,7 @@ public abstract class AbstractResource implements Resource{
      */
     @Override
     public boolean exists() {
+        //这个分支永远不能跑，为什么还要写呢？
         // Try file existence: can we find the file in the file system?
         if (isFile()){
             try {
