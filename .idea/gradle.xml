@@ -5,11 +5,13 @@
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
         <option name="distributionType" value="DEFAULT_WRAPPED" />
-        <option name="externalProjectPath" value="$PROJECT_DIR$/spring_bean" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="gradleHome" value="$PROJECT_DIR$/../../gradle/gradle-6.7.1-bin/gradle-6.7.1" />
         <option name="modules">
           <set>
-            <option value="$PROJECT_DIR$/spring_bean" />
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/spring-core" />
+            <option value="$PROJECT_DIR$/spring-jcl" />
           </set>
         </option>
       </GradleProjectSettings>

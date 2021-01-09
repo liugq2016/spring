@@ -23,10 +23,4 @@
 hs_err_pid*
 build/
 test/
-.gradle
-.idea
-gradle
-lib
-gradlew.bat
-gradlew
 .gitignore
