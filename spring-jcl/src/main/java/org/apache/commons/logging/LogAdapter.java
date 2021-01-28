@@ -1,8 +1,10 @@
 package org.apache.commons.logging;
 
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.spi.LoggerContext;
 import org.apache.logging.log4j.spi.ExtendedLogger;
+import org.apache.logging.log4j.spi.LoggerContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 
@@ -55,18 +57,18 @@ final class LogAdapter {
 
     private LogAdapter(){}
 
+
     /**
      * Create an actual {@link Log} instance for the selected API.
      * @param name the logger name
      */
     //TODO:需先实现各种日志模式的日志打印对象(logger)
-//    public static Log createLog(String name){
-////        switch (logApi){
-////            case LOG4J:
-////
-////        }
-//    }
+   /* public static Log createLog(String name){
+        switch (logApi){
+            case LOG4J:
 
+        }
+    }*/
 
     private static boolean isPresent(String className){
         try {
@@ -79,6 +81,20 @@ final class LogAdapter {
 
 
     private enum LogApi{LOG4J,SLF4J_LAL,SLF4J,JUL}
+
+    private static class Log4jAdapter{
+        public static Log createLog(String name){
+            return new Log4jLog(name);
+        }
+    }
+
+    private static class Slf4jAdapter{
+        public static Log createLocationAwareLog(String name){
+            Logger logger = LoggerFactory.getLogger(name);
+            //return (logger instanceof );
+            return null;
+        }
+    }
 
     @SuppressWarnings("serial")
     private static class Log4jLog implements Log, Serializable{
@@ -93,6 +109,7 @@ final class LogAdapter {
         public Log4jLog(String name){
             LoggerContext context = Log4jLog.loggerContext;
             if (context == null){
+                //Circular call in early-init scenario -> static field not initialized yet
                context = LogManager.getContext(Log4jLog.class.getClassLoader(),false);
             }
             this.logger = context.getLogger(name);
