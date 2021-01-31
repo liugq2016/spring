@@ -1,12 +1,15 @@
 package org.apache.commons.logging;
 
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.spi.ExtendedLogger;
 import org.apache.logging.log4j.spi.LoggerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.LocationAwareLogger;
 
 import java.io.Serializable;
+import java.util.logging.LogRecord;
 
 /**
  * Spring's common JCL adapter(适配器) behind(后面) {@link LogFactory} and {@link LogFactoryService}.
@@ -63,13 +66,32 @@ final class LogAdapter {
      * @param name the logger name
      */
     //TODO:需先实现各种日志模式的日志打印对象(logger)
-   /* public static Log createLog(String name){
+    public static Log createLog(String name){
         switch (logApi){
             case LOG4J:
+                return Log4jAdapter.createLog(name);
+            case SLF4J_LAL:
+                return Slf4jAdapter.createLocationAwareLog(name);
+            case SLF4J:
+                return Slf4jAdapter.createLog(name);
+            default:
+                // Defensively use lazy-initializing adapter class here as well since the
+                // java.logging module is not present by default on JDK 9. We are requiring
+                // its presence if neither Log4j nor SLF4J is available; however, in the
+                // case of Log4j or SLF4J, we are trying to prevent early initialization
+                // of the JavaUtilLog adapter - e.g. by a JVM in debug mode - when eagerly
+                // trying to parse the bytecode for all the cases of this switch clause.
+                return JavaUtilAdapter.createLog(name);
 
         }
-    }*/
+    }
 
+
+    /**
+     *  实例化日志对象并返回true,对象构造失败则返回false
+     * @param className 类的全限定路径
+     * @return boolean
+     */
     private static boolean isPresent(String className){
         try {
             Class.forName(className,false,LogAdapter.class.getClassLoader());
@@ -82,20 +104,52 @@ final class LogAdapter {
 
     private enum LogApi{LOG4J,SLF4J_LAL,SLF4J,JUL}
 
+    /**
+     * @author lgq
+     * @Description Log4j对象适配器
+     * @create 2021-01-31 14:28
+     */
     private static class Log4jAdapter{
         public static Log createLog(String name){
             return new Log4jLog(name);
         }
     }
 
+    /**
+     * @author lgq
+     * @Description Slf4j对象适配器
+     * @create 2021-01-31 14:28
+     */
     private static class Slf4jAdapter{
         public static Log createLocationAwareLog(String name){
             Logger logger = LoggerFactory.getLogger(name);
-            //return (logger instanceof );
-            return null;
+            //查看logger实例是否为LocationAwareLogger对象
+            return (logger instanceof LocationAwareLogger ?
+                    new Slf4jLocationAwareLog((LocationAwareLogger) logger): new Slf4jLog<>(logger) );
+        }
+
+        //Slf4jLog::readResolve():再次获得一个logger对象
+        public static Log createLog(String  name){
+            return new Slf4jLog<>(LoggerFactory.getLogger(name));
         }
     }
 
+    /**
+     * @author lgq
+     * @Description java默认log对象适配器
+     * @create 2021-01-31 14:28
+     */
+    private static class JavaUtilAdapter{
+        public static Log createLog(String name){
+            return new JavaUtilLog(name);
+        }
+    }
+
+    /**
+     * @author lgq
+     * @Description Log4j对象实例化及打印各级别日志方法的实现
+     * @create 2021-01-31 14:28
+     */
     @SuppressWarnings("serial")
     private static class Log4jLog implements Log, Serializable{
 
@@ -115,96 +169,578 @@ final class LogAdapter {
             this.logger = context.getLogger(name);
         }
 
+//        设置日志打印级别
         @Override
         public boolean isFatalEnabled() {
-            return false;
+            return this.logger.isEnabled(Level.FATAL);
         }
 
         @Override
         public boolean isErrorEnabled() {
-            return false;
+            return this.logger.isEnabled(Level.ERROR);
         }
 
         @Override
         public boolean isWarnEnabled() {
-            return false;
+            return this.logger.isEnabled(Level.WARN);
         }
 
         @Override
         public boolean isInfoEnable() {
-            return false;
+            return this.logger.isEnabled(Level.INFO);
         }
 
         @Override
         public boolean isDebugEnable() {
-            return false;
+            return this.logger.isEnabled(Level.DEBUG);
         }
 
         @Override
         public boolean isTraceEnable() {
-            return false;
+            return this.logger.isEnabled(Level.TRACE);
         }
 
         @Override
         public void fatal(Object message) {
-
+            log(Level.FATAL,message,null);
         }
 
         @Override
-        public void fatal(Object message, Throwable t) {
-
+        public void fatal(Object message, Throwable exception) {
+            log(Level.FATAL,message,exception);
         }
 
         @Override
         public void error(Object message) {
-
+            log(Level.ERROR,message,null);
         }
 
         @Override
-        public void error(Object message, Throwable t) {
-
+        public void error(Object message, Throwable exception) {
+            log(Level.ERROR,message,exception);
         }
 
         @Override
         public void warn(Object message) {
-
+            log(Level.WARN,message,null);
         }
 
         @Override
-        public void warn(Object message, Throwable t) {
-
+        public void warn(Object message, Throwable exception) {
+            log(Level.WARN,message,exception);
         }
 
         @Override
         public void info(Object message) {
-
+            log(Level.INFO,message,null);
         }
 
         @Override
-        public void info(Object message, Throwable t) {
-
+        public void info(Object message, Throwable exception) {
+            log(Level.INFO,message,exception);
         }
 
         @Override
         public void debug(Object message) {
-
+            log(Level.DEBUG,message,null);
         }
 
         @Override
-        public void debug(Object message, Throwable t) {
-
+        public void debug(Object message, Throwable exception) {
+            log(Level.DEBUG,message,exception);
         }
 
         @Override
         public void trace(Object message) {
-
+            log(Level.TRACE,message,null);
         }
 
         @Override
-        public void trace(Object message, Throwable t) {
+        public void trace(Object message, Throwable exception) {
+            log(Level.TRACE,message,exception);
+        }
 
+        /**
+         * 日志打印方法
+         * @param level 日志级别
+         * @param message 运行信息
+         * @param exception 异常信息
+         */
+        private void log(Level level,Object message,Throwable exception){
+//            如果message实例为String的对象，则强转为字符打印，否则，原样打印
+            if (message instanceof String){
+                if (exception == null){
+                    this.logger.logIfEnabled(FQCN,level,null,(String)message);
+                }
+                else {
+                    this.logger.logIfEnabled(FQCN,level,null,(String)message,exception);
+                }
+            }
+            else {
+                this.logger.logIfEnabled(FQCN,level,null,message,exception);
+            }
         }
     }
 
+    /**
+     * @author lgq
+     * @Description Slf4jLog对象实例化及打印各级别日志方法的实现
+     * @create 2021-01-31 14:28
+     */
+    @SuppressWarnings("serial")
+    private static class Slf4jLog<T extends Logger> implements Log,Serializable{
+
+        protected final String name;
+
+        //被transient修饰的变量不会被序列化和反序列化
+        protected transient T logger;
+
+        public Slf4jLog(T logger){
+            this.name = logger.getName();
+            this.logger = logger;
+        }
+
+
+        @Override
+        public boolean isFatalEnabled() {
+            return isErrorEnabled();
+        }
+
+        @Override
+        public boolean isErrorEnabled() {
+            return this.logger.isErrorEnabled();
+        }
+
+        @Override
+        public boolean isWarnEnabled() {
+            return this.logger.isWarnEnabled();
+        }
+
+        @Override
+        public boolean isInfoEnable() {
+            return this.logger.isInfoEnabled();
+        }
+
+        @Override
+        public boolean isDebugEnable() {
+            return this.logger.isDebugEnabled();
+        }
+
+        @Override
+        public boolean isTraceEnable() {
+            return this.logger.isTraceEnabled();
+        }
+
+        @Override
+        public void fatal(Object message) {
+            error(message);
+        }
+
+        @Override
+        public void fatal(Object message, Throwable exception) {
+            error(message,exception);
+        }
+
+        @Override
+        public void error(Object message) {
+            if (message instanceof String || this.logger.isErrorEnabled()){
+                this.logger.error(String.valueOf(message));
+            }
+        }
+
+        @Override
+        public void error(Object message, Throwable exception) {
+            if (message instanceof String || this.logger.isErrorEnabled()){
+                this.logger.error(String.valueOf(message),exception);
+            }
+        }
+
+        @Override
+        public void warn(Object message) {
+            if (message instanceof String || this.logger.isWarnEnabled()){
+                this.logger.warn(String.valueOf(message));
+            }
+        }
+
+        @Override
+        public void warn(Object message, Throwable exception) {
+            if (message instanceof String || this.logger.isWarnEnabled()){
+                this.logger.warn(String.valueOf(message),exception);
+            }
+        }
+
+        @Override
+        public void info(Object message) {
+            if (message instanceof String || this.logger.isInfoEnabled()){
+                this.logger.info(String.valueOf(message));
+            }
+        }
+
+        @Override
+        public void info(Object message, Throwable exception) {
+            if (message instanceof String || this.logger.isInfoEnabled()){
+                this.logger.info(String.valueOf(message),exception);
+            }
+        }
+
+        @Override
+        public void debug(Object message) {
+            if (message instanceof String || this.logger.isDebugEnabled()){
+                this.logger.debug(String.valueOf(message));
+            }
+        }
+
+        @Override
+        public void debug(Object message, Throwable exception) {
+            if (message instanceof String || this.logger.isDebugEnabled()){
+                this.logger.debug(String.valueOf(message),exception);
+            }
+        }
+
+        @Override
+        public void trace(Object message) {
+            if (message instanceof String || this.logger.isTraceEnabled()){
+                this.logger.trace(String.valueOf(message));
+            }
+        }
+
+        @Override
+        public void trace(Object message, Throwable exception) {
+            if (message instanceof String || this.logger.isTraceEnabled()){
+                this.logger.trace(String.valueOf(message),exception);
+            }
+        }
+
+        //再次获取一个logger对象实例
+        protected Object readResolve(){
+            return Slf4jAdapter.createLog(this.name);
+        }
+
+    }
+
+    /**
+     * @author lgq
+     * @Description Slf4jLog对象实例化及打印各级别日志方法的实现
+     * @create 2021-01-31 14:28
+     */
+    @SuppressWarnings("serial")
+    private static class Slf4jLocationAwareLog extends Slf4jLog<LocationAwareLogger> implements Serializable{
+
+        private static final String FQCN = Slf4jLocationAwareLog.class.getName();
+
+        // 继承父类构造方法
+        public Slf4jLocationAwareLog(LocationAwareLogger logger) {
+            super(logger);
+        }
+
+        @Override
+        public void fatal(Object message) {
+                error(message);
+        }
+
+        @Override
+        public void fatal(Object message, Throwable exception) {
+            error(message,exception);
+        }
+
+        @Override
+        public void error(Object message) {
+            if (message instanceof String || this.logger.isErrorEnabled()){
+                this.logger.log(null,FQCN,LocationAwareLogger.ERROR_INT,String.valueOf(message),null,null);
+            }
+        }
+
+        @Override
+        public void error(Object message, Throwable exception) {
+            if (message instanceof String || this.logger.isErrorEnabled()){
+                this.logger.log(null,FQCN,LocationAwareLogger.ERROR_INT,String.valueOf(message),null,exception);
+            }
+        }
+
+        @Override
+        public void warn(Object message) {
+            if (message instanceof String || this.logger.isWarnEnabled()){
+                this.logger.log(null,FQCN,LocationAwareLogger.WARN_INT,String.valueOf(message),null,null);
+            }
+        }
+
+        @Override
+        public void warn(Object message, Throwable exception) {
+            if (message instanceof String || this.isWarnEnabled()){
+                this.logger.log(null,FQCN,LocationAwareLogger.WARN_INT,String.valueOf(message),null,exception);
+            }
+        }
+
+        @Override
+        public void info(Object message) {
+            if (message instanceof String || this.isInfoEnable()){
+                this.logger.log(null,FQCN,LocationAwareLogger.INFO_INT,String.valueOf(message),null,null);
+            }
+        }
+
+        @Override
+        public void info(Object message, Throwable exception) {
+            if (message instanceof String || this.isInfoEnable()){
+                this.logger.log(null,FQCN,LocationAwareLogger.INFO_INT,String.valueOf(message),null,exception);
+            }
+        }
+
+        @Override
+        public void debug(Object message) {
+            if (message instanceof String || this.isDebugEnable()){
+                this.logger.log(null,FQCN,LocationAwareLogger.DEBUG_INT,String.valueOf(message),null,null);
+            }
+        }
+
+        @Override
+        public void debug(Object message, Throwable exception) {
+            if (message instanceof String || this.isDebugEnable()){
+                this.logger.log(null,FQCN,LocationAwareLogger.DEBUG_INT,String.valueOf(message),null,exception);
+            }
+        }
+
+        @Override
+        public void trace(Object message) {
+            if (message instanceof String || this.isTraceEnable()){
+                this.logger.log(null,FQCN,LocationAwareLogger.TRACE_INT,String.valueOf(message),null,null);
+            }
+        }
+
+        @Override
+        public void trace(Object message, Throwable exception) {
+            if (message instanceof String || this.isTraceEnable()){
+                this.logger.log(null,FQCN,LocationAwareLogger.TRACE_INT,String.valueOf(message),null,exception);
+            }
+        }
+
+        // 再次获取Slf4jLocationAwareLog实例
+        @Override
+        protected Object readResolve() {
+            return Slf4jAdapter.createLocationAwareLog(this.name);
+        }
+    }
+
+    /**
+     * @author lgq
+     * @Description JavaUtilLog对象实例化及打印各级别日志方法的实现
+     * @create 2021-01-31 14:28
+     */
+    @SuppressWarnings("serial")
+    private static class JavaUtilLog implements Log,Serializable{
+
+        private String name;
+
+        //java默认日志打印，但是jdk9就没有此模块了
+        private transient java.util.logging.Logger logger;
+
+        public JavaUtilLog(String  name){
+            this.name = name;
+            this.logger = java.util.logging.Logger.getLogger(name);
+        }
+
+
+        @Override
+        public boolean isFatalEnabled() {
+            return isErrorEnabled();
+        }
+
+        @Override
+        public boolean isErrorEnabled() {
+            return this.logger.isLoggable(java.util.logging.Level.SEVERE);
+        }
+
+        @Override
+        public boolean isWarnEnabled() {
+            return this.logger.isLoggable(java.util.logging.Level.WARNING);
+        }
+
+        @Override
+        public boolean isInfoEnable() {
+            return this.logger.isLoggable(java.util.logging.Level.INFO);
+        }
+
+        @Override
+        public boolean isDebugEnable() {
+            return this.logger.isLoggable(java.util.logging.Level.FINE);
+        }
+
+        @Override
+        public boolean isTraceEnable() {
+            return this.logger.isLoggable(java.util.logging.Level.FINEST);
+        }
+
+        @Override
+        public void fatal(Object message) {
+            error(message);
+        }
+
+        @Override
+        public void fatal(Object message, Throwable exception) {
+            error(message, exception);
+        }
+
+        @Override
+        public void error(Object message) {
+            log(java.util.logging.Level.SEVERE,message,null);
+        }
+
+        @Override
+        public void error(Object message, Throwable exception) {
+            log(java.util.logging.Level.SEVERE,message,exception);
+        }
+
+        @Override
+        public void warn(Object message) {
+            log(java.util.logging.Level.WARNING,message,null);
+        }
+
+        @Override
+        public void warn(Object message, Throwable exception) {
+            log(java.util.logging.Level.WARNING,message,exception);
+        }
+
+        @Override
+        public void info(Object message) {
+            log(java.util.logging.Level.INFO,message,null);
+        }
+
+        @Override
+        public void info(Object message, Throwable exception) {
+            log(java.util.logging.Level.INFO,message,exception);
+        }
+
+        @Override
+        public void debug(Object message) {
+            log(java.util.logging.Level.FINE,message,null);
+        }
+
+        @Override
+        public void debug(Object message, Throwable exception) {
+            log(java.util.logging.Level.FINE,message,exception);
+        }
+
+        @Override
+        public void trace(Object message) {
+            log(java.util.logging.Level.FINEST,message,null);
+        }
+
+        @Override
+        public void trace(Object message, Throwable exception) {
+            log(java.util.logging.Level.FINEST,message,exception);
+        }
+
+        /**
+         *  日志打印方法
+         * @param level 日志级别
+         * @param message 信息
+         * @param exception 异常信息
+         */
+        private void log(java.util.logging.Level level,Object message,Throwable exception){
+            if (this.logger.isLoggable(level)){
+                LogRecord rec;
+                if (message instanceof LogRecord){
+                    rec = (LogRecord) message;
+                }
+                else {
+                    rec = new LocationResolvingLogRecord(level,String.valueOf(message));
+                    rec.setLoggerName(this.name);
+                    rec.setResourceBundleName(this.logger.getResourceBundleName());
+                    rec.setResourceBundle(this.logger.getResourceBundle());
+                    rec.setThrown(exception);
+                }
+                logger.log(rec);
+            }
+        }
+
+    }
+
+    /**
+     * @author lgq
+     * @Description 用于构建JavaUtilLog类要使用的LogRecord对象
+     * @create 2021-01-31 17:20
+     */
+    @SuppressWarnings("serial")
+    private static class LocationResolvingLogRecord extends LogRecord{
+
+        private static final String FQCN = JavaUtilLog.class.getName();
+
+        private volatile boolean resolved;
+
+        public LocationResolvingLogRecord(java.util.logging.Level level, String msg) {
+            super(level, msg);
+        }
+
+        @Override
+        public String getSourceClassName() {
+            if (!this.resolved){
+                resolve();
+            }
+            return super.getSourceClassName();
+        }
+
+        @Override
+        public void setSourceClassName(String sourceClassName) {
+            super.setSourceClassName(sourceClassName);
+            this.resolved= true;
+        }
+
+        @Override
+        public String getSourceMethodName() {
+            if (!this.resolved){
+                resolve();
+            }
+            return super.getSourceMethodName();
+        }
+
+        @Override
+        public void setSourceMethodName(String sourceMethodName) {
+            super.setSourceMethodName(sourceMethodName);
+            this.resolved = true;
+        }
+
+        /**
+         * 对sourceMethodName、sourceClassName经行初始化
+         */
+        private void resolve(){
+            StackTraceElement[] stack = new Throwable().getStackTrace();
+            String  sourceClassName = null;
+            String sourceMethodName = null;
+            boolean found = false;
+
+            for (StackTraceElement element : stack){
+                String className = element.getClassName();
+                if (FQCN.equals(className)){
+                    found = true;
+                }
+                else if (found){
+                    sourceClassName = className;
+                    sourceMethodName = element.getMethodName();
+                    break;
+                }
+            }
+
+            setSourceClassName(sourceClassName);
+            setSourceMethodName(sourceMethodName);
+
+        }
+
+        @SuppressWarnings("deprecation")  // setMillis is deprecated in JDK 9
+        protected Object writeReplace(){
+            LogRecord serialized = new LogRecord(getLevel(), getMessage());
+            serialized.setLoggerName(getLoggerName());
+            serialized.setResourceBundle(getResourceBundle());
+            serialized.setResourceBundleName(getResourceBundleName());
+            serialized.setSourceClassName(getSourceClassName());
+            serialized.setSourceMethodName(getSourceMethodName());
+            serialized.setSequenceNumber(getSequenceNumber());
+            serialized.setParameters(getParameters());
+            serialized.setThreadID(getThreadID());
+            serialized.setMillis(getMillis());
+            serialized.setThrown(getThrown());
+            return serialized;
+        }
+
+
+    }
 
 }
