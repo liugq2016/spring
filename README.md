@@ -6,4 +6,5 @@
     3. Spring真牛皮，尽量的兼容了各种日志log4j或slf4j的日志输出方式，但是不知道为什么即使知道log4j更好用，在使用log4j-to-slf4j bridge还是会选择使用log4j，jcl包还是没写完。20210109
 # 按包分类
 ## springg-jcl:注解的公共包
+    1. 今天学习了[org.apache.commons.logging.LogAdapter](获取log4j、slf4j及java默认logger对象)。
 ## spring-core:spring读取各类文件主要发生在这
